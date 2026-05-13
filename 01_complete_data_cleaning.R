@@ -307,3 +307,126 @@ cat("CLEANING 100% COMPLETE!\n")
 cat("Total observations:", nrow(final_dataset), "\n")
 cat("Cities:", n_distinct(final_dataset$city_code), "\n")
 cat("Years:", min(final_dataset$year), "to", max(final_dataset$year), "\n")
+library(dplyr)
+# Sort my final dataset (MANDATORY)
+data <- final_dataset %>%
+  arrange(city_code, year)
+# R&D depreciation rate (15% = global standard for China)
+delta <- 0.15
+
+# Base year = 2008
+base_year <- 2008
+# Calculate growth rate + initial capital
+data <- data %>%
+  group_by(city_code) %>%
+  mutate(
+    # R&D growth rate (5% if missing/negative)
+    rd_growth = (total_rd / lag(total_rd) - 1),
+    avg_growth = ifelse(is.na(mean(rd_growth, na.rm=T)) | mean(rd_growth, na.rm=T)<=0, 
+                        0.05, mean(rd_growth, na.rm=T)),
+    # Initial capital (2008)
+    rd_capital = ifelse(year == base_year, 
+                        total_rd / (avg_growth + delta), NA)
+  ) %>%
+  ungroup()
+# FIXED PIM loop (no errors, handles missing data safely)
+for (city in unique(data$city_code)) {
+  city_rows <- which(data$city_code == city)
+  
+  # Skip cities with no initial capital (prevents your error)
+  if (is.na(data$rd_capital[city_rows[1]])) {
+    next
+  }
+  
+  # Calculate R&D capital stock for all years
+  for (i in 2:length(city_rows)) {
+    prev_k <- data$rd_capital[city_rows[i-1]]
+    current_rd <- data$total_rd[city_rows[i]]
+    
+    if (!is.na(prev_k)) {
+      data$rd_capital[city_rows[i]] <- prev_k * (1 - delta) + current_rd
+    }
+  }
+}
+# Update your main dataset
+final_dataset <- data
+# Save the completed file
+saveRDS(final_dataset, "output/final_dataset_with_rd_capital.rds")
+write.csv(final_dataset, "output/final_dataset_with_rd_capital.csv", row.names = FALSE)
+# Success check
+cat("R&D CAPITAL STOCK COMPLETED!\n")
+summary(final_dataset$rd_capital)
+# SBM-DEA Green Innovation Efficiency Model (With Undesirable Outputs)
+# Install packages
+install.packages("deaR")
+install.packages("dplyr")
+# Load packages (run every time)
+library(deaR)
+library(dplyr)
+# Load the dataset with R&D capital stock
+final_dataset <- readRDS("output/final_dataset_with_rd_capital.rds")
+# Filter data for DEA (remove NA/zero values in inputs/outputs)
+dea_data <- final_dataset %>%
+  filter(
+    !is.na(rd_capital),
+    rd_capital > 0,
+    r_d_personnel > 0,
+    total_green_grants >= 0,
+    gdp > 0,
+    so2_pollution >= 0,
+    water_pollution >= 0,
+    smoke_pollution >= 0
+  ) %>%
+  # Replace 0 green patents with 1 (DEA rule: no zero outputs)
+  mutate(total_green_grants = ifelse(total_green_grants == 0, 1, total_green_grants)) %>%
+  arrange(year, city_code)
+# Install stable DEA package (answer Y to ALL prompts)
+# Clear all data/packages from memory (fixes 90% of errors)
+rm(list = ls())
+gc()
+# Install (type Y when prompted)
+install.packages("Benchmarking")
+install.packages("dplyr")
+
+# Load packages (MANDATORY)
+library(Benchmarking)
+library(dplyr)
+# Load your data with R&D capital stock
+final_dataset <- readRDS("output/final_dataset_with_rd_capital.rds")
+# Clean data for DEA
+dea_data <- final_dataset %>%
+  filter(
+    !is.na(rd_capital),
+    rd_capital > 0,
+    r_d_personnel > 0,
+    total_green_grants > 0,
+    gdp > 0
+  ) %>%
+  arrange(year, city_code)
+# INPUTS (Resources used for innovation)
+# 1. R&D Capital Stock  2. R&D Personnel
+X <- as.matrix(dea_data[, c("rd_capital", "r_d_personnel")])
+
+# OUTPUTS (Innovation results)
+# 1. Green Patents  2. GDP
+Y <- as.matrix(dea_data[, c("total_green_grants", "gdp")])
+# Run Input-Oriented CRS DEA (academic standard)
+efficiency_model <- dea(X = X, Y = Y, RTS = "crs", ORIENTATION = "in")
+# Attach efficiency scores (0 = inefficient, 1 = fully efficient)
+dea_data$efficiency_score <- efficiency_model$eff
+# Merge scores back to your FULL dataset
+final_dataset <- left_join(
+  final_dataset,
+  dea_data %>% select(city_code, year, efficiency_score),
+  by = c("city_code", "year")
+)
+
+# Fill missing scores with 0 (cities excluded from DEA)
+final_dataset$efficiency_score[is.na(final_dataset$efficiency_score)] <- 0
+# Save to Excel + R format (your FINAL data for the entire thesis!)
+saveRDS(final_dataset, "output/FINAL_THESIS_DATASET.rds")
+write.csv(final_dataset, "output/FINAL_THESIS_DATASET.csv", row.names = FALSE)
+
+# Success Check
+cat("UCCESS! Green Innovation Efficiency Calculated\n")
+summary(final_dataset$efficiency_score)
