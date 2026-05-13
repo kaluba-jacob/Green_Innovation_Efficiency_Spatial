@@ -16,7 +16,18 @@ data/
 .Ruserdata
 *.Rproj
 *~
-
 # OS junk
 .DS_Store
 Thumbs.db
+# Ignore raw data files (too large for GitHub)
+data/raw/*.xlsx
+data/raw/*.xls
+
+# Ignore large intermediate files (if needed)
+output/*.csv
+output/*.rds
+
+# R-specific ignores
+.Rhistory
+.Rapp.history
+*.Rproj.user

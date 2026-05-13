@@ -224,3 +224,86 @@ city_firm_agg <- firm_merged %>%
     num_firms = n_distinct(stkcd),
     .groups = "drop"
   )
+# Check all required data frames
+ls(pattern = "city_|firm_")
+colnames(city_basic)
+colnames(city_pollution)
+library(tidyverse)
+# Step 1: Rename columns
+city_basic_clean <- rename(city_basic,
+                           year = sgnyea,
+                           city = ctnm,
+                           city_code = ctnm_id,
+                           envirct01 = envirct01
+)
+# Step 2: Convert year to numeric
+city_basic_clean <- mutate(city_basic_clean,
+                           year = as.numeric(year)
+)
+# Step 3: Filter years 2008-2022
+city_basic_clean <- filter(city_basic_clean,
+                           year >= 2008 & year <= 2022
+)
+# Check the result
+head(city_basic_clean)
+city_pollution_clean <- rename(city_pollution,
+                               year = nian_fen,
+                               province = sheng_fen,
+                               city = cheng_shi,
+                               province_code = sheng_fen_dai_ma,
+                               city_code = cheng_shi_dai_ma,
+                               gdp = de_qu_sheng_chan_zong_zhi_wan_yuan,
+                               primary_industry = di_yi_chan_ye_zeng_jia_zhi_wan_yuan,
+                               secondary_industry = di_er_chan_ye_zeng_jia_zhi_wan_yuan,
+                               tertiary_industry = di_san_chan_ye_zeng_jia_zhi_wan_yuan,
+                               gdp_per_capita = ren_jun_de_qu_sheng_chan_zong_zhi_yuan,
+                               r_d_personnel = r_d_ren_yuan_ren,
+                               water_pollution = gong_ye_fei_shui_pai_fang_liang_wan_dun,
+                               so2_pollution = gong_ye_er_yang_hua_liu_pai_fang_liang_dun,
+                               smoke_pollution = gong_ye_yan_chen_pai_fang_liang_dun
+)
+city_pollution_clean <- mutate(city_pollution_clean,
+                               year = as.numeric(year)
+)
+city_pollution_clean <- filter(city_pollution_clean,
+                               year >= 2008 & year <= 2022
+)
+city_pollution_clean <- select(city_pollution_clean,
+                               year, city, province, city_code, gdp, gdp_per_capita, r_d_personnel, water_pollution, so2_pollution, smoke_pollution
+)
+head(city_pollution_clean)
+# Merge city basic + pollution/economic data
+city_merged <- merge(city_basic_clean, city_pollution_clean, by = c("year", "city"), all.x = TRUE)
+
+# Check the merged result
+head(city_merged)
+# Merge city data + firm aggregated data
+final_dataset <- merge(city_firm_agg, city_merged, by = c("year", "city"), all.x = TRUE)
+# Replace all missing values with 0
+final_dataset$envirct01[is.na(final_dataset$envirct01)] <- 0
+final_dataset$gdp[is.na(final_dataset$gdp)] <- 0
+final_dataset$gdp_per_capita[is.na(final_dataset$gdp_per_capita)] <- 0
+final_dataset$water_pollution[is.na(final_dataset$water_pollution)] <- 0
+final_dataset$so2_pollution[is.na(final_dataset$so2_pollution)] <- 0
+final_dataset$smoke_pollution[is.na(final_dataset$smoke_pollution)] <- 0
+head(final_dataset)
+# Use city_code.x (from city_basic_clean) as the main city code
+final_dataset$city_code <- final_dataset$city_code.x
+
+# Remove duplicate/extra columns
+final_dataset <- final_dataset[, !colnames(final_dataset) %in% c("city_code.x", "city_code.y")]
+# Sort by city_code and year (tidyverse way, no errors)
+library(dplyr)
+final_dataset <- arrange(final_dataset, city_code, year)
+# Create output folder if needed
+if (!dir.exists("output")) dir.create("output")
+
+# Save in both formats
+saveRDS(final_dataset, "output/final_cleaned_dataset.rds")
+write.csv(final_dataset, "output/final_cleaned_dataset.csv", row.names = FALSE)
+
+# Final success message
+cat("CLEANING 100% COMPLETE!\n")
+cat("Total observations:", nrow(final_dataset), "\n")
+cat("Cities:", n_distinct(final_dataset$city_code), "\n")
+cat("Years:", min(final_dataset$year), "to", max(final_dataset$year), "\n")
