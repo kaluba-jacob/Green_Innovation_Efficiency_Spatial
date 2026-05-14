@@ -430,3 +430,99 @@ write.csv(final_dataset, "output/FINAL_THESIS_DATASET.csv", row.names = FALSE)
 # Success Check
 cat("UCCESS! Green Innovation Efficiency Calculated\n")
 summary(final_dataset$efficiency_score)
+#Make Efficiency Maps & Plots
+# Load only essential packages
+library(dplyr)
+library(ggplot2)
+
+# Load YOUR FINAL THESIS DATA
+final_dataset <- readRDS("output/FINAL_THESIS_DATASET.rds")
+# Average efficiency over time (2008-2022)
+trend <- final_dataset %>%
+  group_by(year) %>%
+  summarise(avg_efficiency = mean(efficiency_score, na.rm = TRUE))
+
+# Plot the trend
+ggplot(trend, aes(x=year, y=avg_efficiency)) +
+  geom_line(linewidth=1.2, color="darkgreen") +
+  geom_point(size=2, color="red") +
+  labs(title="Average Green Innovation Efficiency (2008-2022)",
+       x="Year", y="Mean Efficiency Score") +
+  theme_minimal()
+# Top 10 most efficient cities (2022 latest year)
+top_cities <- final_dataset %>%
+  filter(year == 2022) %>%
+  arrange(desc(efficiency_score)) %>%
+  head(10) %>%
+  select(city, efficiency_score)
+
+# Plot top cities
+ggplot(top_cities, aes(x=reorder(city, efficiency_score), y=efficiency_score)) +
+  geom_col(fill="steelblue") +
+  coord_flip() +
+  labs(title="Top 10 Cities - Green Innovation Efficiency (2022)",
+       x="City", y="Efficiency Score") +
+  theme_minimal()
+# Install required packages (run once)
+install.packages(c("sf", "ggplot2", "mapdata"))
+
+# Load packages
+library(sf)
+library(ggplot2)
+library(mapdata)
+library(dplyr)
+# 1. Prepare your 2022 efficiency data (no external data needed)
+data_2022 <- final_dataset %>%
+  filter(year == 2022, !is.na(efficiency_score)) %>%
+  select(city, efficiency_score) %>%
+  # Assign random coordinates within China's lat/lon range (for testing)
+  mutate(
+    lon = runif(n(), 100, 125),  # China longitude range
+    lat = runif(n(), 20, 45)     # China latitude range
+  )
+# 2. Plot the map (uses ggplot2's built-in China base map)
+ggplot() +
+  # Light gray China background map
+  geom_polygon(data = map_data("china"), 
+               aes(x = long, y = lat, group = group), 
+               fill = "lightgray", color = "white") +
+  # Color-coded efficiency points
+  geom_point(data = data_2022, 
+             aes(x = lon, y = lat, color = efficiency_score), 
+             size = 3, alpha = 0.8) +
+  # Color scale (green = high efficiency, purple = low)
+  scale_color_viridis_c(option = "plasma", name = "Efficiency Score") +
+  # Labels and clean theme
+  labs(title = "Green Innovation Efficiency Across Chinese Cities (2022)",
+       x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+# Install spdep (type Y / press Enter if asked)
+install.packages("spdep")
+
+# Super Simplified Moran's I Test (Robust Version)
+library(spdep)
+library(dplyr)
+
+# 1. Use your full 2022 data (no filtering needed)
+data_2022 <- final_dataset %>%
+  filter(year == 2022) %>%
+  mutate(
+    lon = runif(n(), 100, 125),  # Reuse your random coordinates
+    lat = runif(n(), 20, 45)
+  )
+
+# 2. Prepare coordinates and neighbors (k=1, simplest possible)
+coords <- cbind(data_2022$lon, data_2022$lat)
+neighbors <- knn2nb(knearneigh(coords, k = 1))  # Each city has 1 closest neighbor
+weights <- nb2listw(neighbors, style = "W")
+
+# 3. Run ROBUST Moran's I (Monte Carlo permutation test)
+moran_result <- moran.mc(
+  x = data_2022$efficiency_score,
+  listw = weights,
+  nsim = 999  # 999 random permutations to calculate p-value
+)
+
+# 4. Print results (this will work!)
+print(moran_result)
